@@ -1,0 +1,201 @@
+#-----------------
+# ServiceAccount
+#-----------------
+serviceAccount:
+  create: true
+
+sa:
+  - name: application
+    annotations: {}
+
+#-----------------
+# HPA
+#-----------------
+autoscaling:
+  enabled: true
+
+hpa:
+  - name: node
+    minReplicas: 2
+    maxReplicas: 4
+    labels:
+      name: node
+
+    hpa_resource:
+    - name: memory
+      utilizationPercentage: 80
+    - name: cpu
+      utilizationPercentage: 80
+
+#-----------------
+# Deployments
+#-----------------
+deployments:
+  - name: node
+    replicaCount: 2
+
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+
+    labels:
+      name: node
+
+    serviceAccountName: application
+    podAnnotations: {}
+    securityContext: {}
+    imagePullSecrets: []
+
+    env:
+    - name: MONGO_ROOT_USERNAME
+      value: root
+    - name: MONGO_ROOT_PASSWORD
+      secretName: credentials
+      key: MONGO_ROOT_PASSWORD
+    - name: MONGODB_URI
+      value: mongodb://$(MONGO_ROOT_USERNAME):$(MONGO_ROOT_PASSWORD)@database.application.svc:27017
+
+    image:
+      repository: bbilkevych/app
+      pullPolicy: Always
+      tag: v1.0.0
+
+    service:
+      targetPort: 3000
+
+    livenessProbe:
+      exec:
+        command:
+        - sh
+        - "-c"
+        - |
+          s ./dist/ ./node_modules/ | wc -l | [ value != 0 ]
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        scheme: HTTP
+        path: /
+        port: 3000
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+    resources:
+      limits:
+        cpu: 1
+        memory: 256Mi
+      requests:
+        cpu: 0.5
+        memory: 256Mi
+
+#-----------------
+# Services
+#-----------------
+service_list:
+  - name: database
+    port: 27017
+    targetPort: 27017
+    labels:
+      name: database
+  - name: node
+    type: LoadBalancer
+    port: 80
+    targetPort: 3000
+    labels:
+      name: node
+
+#-----------------
+# StatefulSets
+#-----------------
+statefulsets:
+  - name: database
+    serviceName: database
+
+    image:
+      repository: docker.io/bitnami/mongodb
+      pullPolicy: Always
+      tag: 5.0.9-debian-10-r15
+
+    appName: mongodb
+    targetPort: 27017
+
+    labels:
+      name: database
+
+    serviceAccountName: application
+    podAnnotations: {}
+
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+
+    env:
+      - name: BITNAMI_DEBUG
+        value: "false"
+      - name: MONGODB_ROOT_USER
+        value: root
+      - name: MONGODB_ROOT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: credentials
+            key: MONGO_ROOT_PASSWORD
+      - name: ALLOW_EMPTY_PASSWORD
+        value: "no"
+      - name: MONGODB_SYSTEM_LOG_VERBOSITY
+        value: "0"
+      - name: MONGODB_DISABLE_SYSTEM_LOG
+        value: "no"
+      - name: MONGODB_ENABLE_JOURNAL
+        value: "yes"
+      - name: MONGODB_PORT_NUMBER
+        value: "27017"
+
+    volume:
+    - name: database
+      mountPath: /data/db
+
+    livenessProbe:
+      exec:
+        command:
+        - bash
+        - "-c"
+        - |
+          mongo --eval db.adminCommand\(\"ping\"\)
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readinessProbe:
+      exec:
+        command:
+          - bash
+          - "-c"
+          - |
+            mongo --eval db.adminCommand\(\"ping\"\)
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+    resources:
+      limits:
+        cpu: 1
+        memory: 256Mi
+      requests:
+        cpu: 0.5
+        memory: 128Mi
+
+    db_volume_template:
+      name: database
+      accessModes: [ "ReadWriteOnce" ]
+
+    db_volume_annotation:
+      volume.beta.kubernetes.io/storage-class: "standard"
+
+    db_volume_resources:
+      resources:
+        requests:
+          storage: 128Mi
+
+#-----------------
+# Secrets
+#-----------------
+secrets_list:
+  - name: credentials

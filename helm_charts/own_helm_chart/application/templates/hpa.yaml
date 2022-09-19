@@ -1,0 +1,27 @@
+{{- if .Values.autoscaling.enabled }}
+{{- range .Values.hpa }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- toYaml .labels | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .name }}
+  minReplicas: {{ .minReplicas | default 1 }}
+  maxReplicas: {{ .maxReplicas }}
+  metrics:
+    {{- range .hpa_resource }}
+    - type: {{ .type | default "Resource" }}
+      resource:
+        name: {{ .name }}
+        target:
+          type: {{ .targetType | default "Utilization" }}
+          averageUtilization: {{ .utilizationPercentage | default 90 }}
+    {{- end }}
+---
+{{- end }}
+{{- end }}

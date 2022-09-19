@@ -1,0 +1,108 @@
+#-----------------
+# ServiceAccount
+#-----------------
+serviceAccount:
+  create: true
+
+sa:
+  - name: application
+    annotations: {}
+
+#-----------------
+# HPA
+#-----------------
+autoscaling:
+  enabled: true
+
+hpa:
+  - name: node
+    minReplicas: 2
+    maxReplicas: 4
+
+    labels:
+      name: node
+
+    hpa_resource:
+    - name: memory
+      utilizationPercentage: 80
+    - name: cpu
+      utilizationPercentage: 80
+
+#-----------------
+# Deployments
+#-----------------
+deployments:
+  - name: node
+    replicaCount: 2
+
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+
+    labels:
+      name: node
+
+    serviceAccountName: application
+    podAnnotations: {}
+    securityContext: {}
+    imagePullSecrets: []
+
+    env:
+    - name: MONGO_ROOT_USERNAME
+      value: root
+    - name: MONGO_ROOT_PASSWORD
+      secretName: credentials
+      key: mongodb-root-password
+    - name: MONGODB_URI
+      value: "mongodb://$(MONGO_ROOT_USERNAME):$(MONGO_ROOT_PASSWORD)@application-mongodb.application.svc.cluster.local:27017"
+
+    image:
+      repository: bbilkevych/app
+      pullPolicy: Always
+      tag: v1.0.0
+
+    service:
+      targetPort: 3000
+
+    livenessProbe:
+      exec:
+        command:
+        - sh
+        - "-c"
+        - |
+          s ./dist/ ./node_modules/ | wc -l | [ value != 0 ]
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        scheme: HTTP
+        path: /
+        port: 3000
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+    resources:
+      limits:
+        cpu: 1
+        memory: 256Mi
+      requests:
+        cpu: 0.5
+        memory: 256Mi
+
+#-----------------
+# Services
+#-----------------
+service_list:
+  - name: node
+    type: LoadBalancer
+    port: 80
+    targetPort: 3000
+    labels:
+      name: node
+
+#-----------------
+# Secrets
+#-----------------
+secrets_list:
+  - name: credentials

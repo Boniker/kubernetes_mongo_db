@@ -1,0 +1,62 @@
+{{- $values := .Values -}}
+{{- $chart := .Chart -}}
+{{- range .Values.statefulsets }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .name }}
+  labels:
+    {{- toYaml .labels | nindent 4 }}
+spec:
+  serviceName: {{ .serviceName }}
+  replicas: {{ .replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- toYaml .labels | nindent 6 }}
+  template:
+    metadata:
+      {{- with .podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- toYaml .labels | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: {{ .terminationGracePeriodSeconds | default 10 }}
+      serviceAccountName: {{ .serviceAccountName | default "default" }}
+      containers:
+        - name: {{ .name }}
+          image: "{{ .image.repository }}:{{ .image.tag | default $chart.AppVersion }}"
+          imagePullPolicy: {{ .image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: {{ .securityContext.runAsNonRoot | default "false" }}
+            runAsUser: {{ .securityContext.runAsUser }}
+          {{- if .env }}
+          env:
+            {{- toYaml .env | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: {{ .appName }}
+              containerPort: {{ .targetPort }}
+          {{- if .livenessProbe }}
+          livenessProbe:
+            {{- toYaml .livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .readinessProbe }}
+          readinessProbe:
+              {{- toYaml .readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .resources }}
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+          {{- end }}
+  volumeClaimTemplates:
+  - metadata:
+      name: {{ .db_volume_template.name }}
+      annotations:
+        {{- toYaml .db_volume_annotation | nindent 8 }}
+    spec:
+      accessModes: {{ .db_volume_template.accessModes }}
+      {{- toYaml .db_volume_resources | nindent 6 }}
+---
+{{- end }}
