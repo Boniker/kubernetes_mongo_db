@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node
+  labels:
+    name: node
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: node
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        name: node
+    spec:
+      serviceAccountName: application
+      containers:
+        - env:
+          - name: MONGO_ROOT_USERNAME
+            value: root
+          - name: MONGO_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: credentials
+                key: MONGO_ROOT_PASSWORD
+          - name: MONGODB_URI
+            value: mongodb://$(MONGO_ROOT_USERNAME):$(MONGO_ROOT_PASSWORD)@database.application.svc:27017
+          name: application
+          securityContext:
+            {}
+          image: "bbilkevych/app:v1.0.0"
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command:
+              - sh
+              - -c
+              - |
+                s ./dist/ ./node_modules/ | wc -l | [ value != 0 ]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
+            requests:
+              cpu: "0.5"
+              memory: 256Mi

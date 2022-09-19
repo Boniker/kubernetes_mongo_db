@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  labels:
+    name: database
+spec:
+  serviceName: database
+  replicas: 1
+  selector:
+    matchLabels:
+      name: database
+  template:
+    metadata:
+      labels:
+        name: database
+    spec:
+      terminationGracePeriodSeconds: 10
+      serviceAccountName: application
+      containers:
+        - name: database
+          image: "docker.io/bitnami/mongodb:5.0.9-debian-10-r15"
+          imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: MONGODB_ROOT_USER
+              value: root
+            - name: MONGODB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: MONGO_ROOT_PASSWORD
+                  name: credentials
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "no"
+            - name: MONGODB_SYSTEM_LOG_VERBOSITY
+              value: "0"
+            - name: MONGODB_DISABLE_SYSTEM_LOG
+              value: "no"
+            - name: MONGODB_ENABLE_JOURNAL
+              value: "yes"
+            - name: MONGODB_PORT_NUMBER
+              value: "27017"
+          ports:
+            - name: mongodb
+              containerPort: 27017
+          livenessProbe:
+            exec:
+              command:
+              - bash
+              - -c
+              - |
+                mongo --eval db.adminCommand\(\"ping\"\)
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+              - bash
+              - -c
+              - |
+                mongo --eval db.adminCommand\(\"ping\"\)
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
+            requests:
+              cpu: "0.5"
+              memory: 128Mi
+  volumeClaimTemplates:
+  - metadata:
+      name: database
+      annotations:
+        volume.beta.kubernetes.io/storage-class: standard
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 128Mi
